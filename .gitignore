@@ -15,5 +15,6 @@ app/build/
 *.keystore
 keystore.properties
 .env
+.signing/
 yibi-*.png
 yibi-*.xml
