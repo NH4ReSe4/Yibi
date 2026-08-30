@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.EventRepeat
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Upload
@@ -58,6 +59,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -87,6 +89,7 @@ import com.dubiao.yibi.data.TransactionType
 import com.dubiao.yibi.domain.formatMoney
 import com.dubiao.yibi.domain.billingCycleFor
 import com.dubiao.yibi.domain.parseMinor
+import com.dubiao.yibi.domain.RecurringBudgetReserve
 import com.dubiao.yibi.domain.weeklyFlexibleAllowance
 import com.dubiao.yibi.BuildConfig
 import com.dubiao.yibi.ui.theme.Apricot
@@ -907,12 +910,17 @@ private fun EmptyReport() {
 fun SettingsScreen(
     billingCloseDay: Int,
     budgetSettings: BudgetSettings,
+    recurringReserve: RecurringBudgetReserve,
     recurringTemplates: List<RecurringTemplateEntity>,
     onBillingCloseDay: (Int) -> Unit,
     onEditBudget: () -> Unit,
     onAddRecurring: () -> Unit,
     onEditRecurring: (RecurringTemplateEntity) -> Unit,
     onDeleteRecurring: (RecurringTemplateEntity) -> Unit,
+    weeklyReminderEnabled: Boolean,
+    notificationPermissionGranted: Boolean,
+    onWeeklyReminderEnabled: (Boolean) -> Unit,
+    onRequestNotificationPermission: () -> Unit,
     onExportBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
     onExportCsv: () -> Unit,
@@ -937,7 +945,7 @@ fun SettingsScreen(
                 onCloseDay = onBillingCloseDay,
             )
         }
-        item { BudgetSettingsCard(budgetSettings, onEditBudget) }
+        item { BudgetSettingsCard(budgetSettings, recurringReserve, onEditBudget) }
         item {
             RecurringSettingsCard(
                 templates = recurringTemplates,
@@ -946,8 +954,48 @@ fun SettingsScreen(
                 onDelete = onDeleteRecurring,
             )
         }
+        item {
+            WeeklyReminderCard(
+                enabled = weeklyReminderEnabled,
+                notificationPermissionGranted = notificationPermissionGranted,
+                onEnabled = onWeeklyReminderEnabled,
+                onRequestPermission = onRequestNotificationPermission,
+            )
+        }
         item { DataTransferCard(onExportBackup, onRestoreBackup, onExportCsv) }
         item { AppUpdateCard(updateState, onCheckUpdate, onDownloadUpdate, onInstallUpdate) }
+    }
+}
+
+@Composable
+private fun WeeklyReminderCard(
+    enabled: Boolean,
+    notificationPermissionGranted: Boolean,
+    onEnabled: (Boolean) -> Unit,
+    onRequestPermission: () -> Unit,
+) {
+    Surface(color = Paper, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.NotificationsActive, contentDescription = null, tint = Forest)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("每周记账提醒", style = MaterialTheme.typography.titleMedium)
+                    Text("每周六 10:00 · 按手机本地时间", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                }
+                Switch(checked = enabled, onCheckedChange = onEnabled)
+            }
+            if (enabled && !notificationPermissionGranted) {
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("需要允许通知后才能收到提醒", color = Coral, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onRequestPermission) { Text("允许通知") }
+                }
+            } else if (enabled) {
+                Spacer(Modifier.height(8.dp))
+                Text("提醒已开启，关闭后将取消下一次通知。", color = Muted, style = MaterialTheme.typography.labelMedium)
+            }
+        }
     }
 }
 
@@ -1020,7 +1068,11 @@ private fun AppUpdateCard(
 }
 
 @Composable
-private fun BudgetSettingsCard(settings: BudgetSettings, onEdit: () -> Unit) {
+private fun BudgetSettingsCard(
+    settings: BudgetSettings,
+    recurringReserve: RecurringBudgetReserve,
+    onEdit: () -> Unit,
+) {
     val configured = listOf(
         "总预算" to settings.totalMinor,
         "固定" to settings.fixedMinor,
@@ -1039,7 +1091,15 @@ private fun BudgetSettingsCard(settings: BudgetSettings, onEdit: () -> Unit) {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("账单周期预算", style = MaterialTheme.typography.titleMedium)
-                    Text(if (configured.isEmpty()) "尚未设置" else "固定预留与弹性分配", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        when {
+                            configured.isEmpty() -> "尚未设置"
+                            recurringReserve.linkedTemplateCount > 0 -> "已联动 ${recurringReserve.linkedTemplateCount} 个周期账目"
+                            else -> "固定预留与弹性分配"
+                        },
+                        color = Muted,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
                 Text("设置", color = Forest, style = MaterialTheme.typography.labelLarge)
             }
@@ -1072,7 +1132,7 @@ private fun RecurringSettingsCard(
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("周期账目", style = MaterialTheme.typography.titleMedium)
-                    Text("房租、订阅等将在到期日自动写入流水", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                    Text("到期日自动入账；固定与订阅同步预留预算", color = Muted, style = MaterialTheme.typography.bodyMedium)
                 }
                 TextButton(onClick = onAdd) { Text("添加") }
             }

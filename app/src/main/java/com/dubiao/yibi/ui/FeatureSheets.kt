@@ -48,6 +48,7 @@ import com.dubiao.yibi.domain.parseMinor
 import com.dubiao.yibi.domain.billingCycleFor
 import com.dubiao.yibi.domain.formatMoney
 import com.dubiao.yibi.domain.linkedBudgetSettings
+import com.dubiao.yibi.domain.RecurringBudgetReserve
 import com.dubiao.yibi.domain.weeklyFlexibleAllowance
 import com.dubiao.yibi.data.CurrencyCode
 import com.dubiao.yibi.ui.theme.Forest
@@ -80,7 +81,7 @@ fun RecurringTemplateSheet(
                 .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
         ) {
             Text(if (state.editingId == 0L) "添加周期账目" else "编辑周期账目", style = MaterialTheme.typography.headlineMedium)
-            Text("到期后会在首页提醒，由你确认后入账", color = Muted)
+            Text("到期日自动入账；固定与订阅会联动预算", color = Muted)
             Spacer(Modifier.height(18.dp))
             OutlinedTextField(
                 value = state.name, onValueChange = onName, modifier = Modifier.fillMaxWidth(),
@@ -168,19 +169,24 @@ fun RecurringTemplateSheet(
 fun BudgetSettingsSheet(
     settings: BudgetSettings,
     billingCloseDay: Int,
+    recurringReserve: RecurringBudgetReserve,
     onDismiss: () -> Unit,
     onSave: (BudgetSettings) -> Unit,
 ) {
     var total by remember(settings) { mutableStateOf(settings.totalMinor.asInput()) }
-    var fixed by remember(settings) { mutableStateOf(settings.fixedMinor.asInput()) }
-    var subscription by remember(settings) { mutableStateOf(settings.subscriptionMinor.asInput()) }
+    var extraFixed by remember(settings, recurringReserve) {
+        mutableStateOf((settings.fixedMinor - recurringReserve.fixedMinor).coerceAtLeast(0).asInput())
+    }
+    var extraSubscription by remember(settings, recurringReserve) {
+        mutableStateOf((settings.subscriptionMinor - recurringReserve.subscriptionMinor).coerceAtLeast(0).asInput())
+    }
     var investmentRatio by remember(settings) {
         val flexible = settings.investmentMinor + settings.dailyMinor
         mutableStateOf(if (flexible > 0) settings.investmentMinor.toFloat() / flexible else .3f)
     }
     val totalMinor = total.amountOrZero()
-    val fixedMinor = fixed.amountOrZero()
-    val subscriptionMinor = subscription.amountOrZero()
+    val fixedMinor = recurringReserve.fixedMinor + extraFixed.amountOrZero()
+    val subscriptionMinor = recurringReserve.subscriptionMinor + extraSubscription.amountOrZero()
     val reserved = fixedMinor + subscriptionMinor
     val valid = totalMinor > 0 && reserved <= totalMinor
     val allocation = linkedBudgetSettings(totalMinor, fixedMinor, subscriptionMinor, investmentRatio)
@@ -195,10 +201,28 @@ fun BudgetSettingsSheet(
             Text("先预留固定支出，再分配投资与自由消费", color = Muted)
             Spacer(Modifier.height(18.dp))
             BudgetInput("总预算", total) { total = it }
+            Spacer(Modifier.height(14.dp))
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("周期账目自动预留", color = Muted, style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        AllocationAmount("固定开销", recurringReserve.fixedMinor, Modifier.weight(1f))
+                        AllocationAmount("固定订阅", recurringReserve.subscriptionMinor, Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (recurringReserve.linkedTemplateCount == 0) "暂无可联动的固定或订阅周期账目"
+                        else "${recurringReserve.linkedTemplateCount} 个周期账目已计入；周付和年付按月折算",
+                        color = Muted,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
             Spacer(Modifier.height(10.dp))
-            BudgetInput("固定开销", fixed) { fixed = it }
+            BudgetInput("额外固定预留", extraFixed) { extraFixed = it }
             Spacer(Modifier.height(10.dp))
-            BudgetInput("固定订阅", subscription) { subscription = it }
+            BudgetInput("额外订阅预留", extraSubscription) { extraSubscription = it }
             Spacer(Modifier.height(18.dp))
             Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(18.dp)) {
                 Column(Modifier.padding(16.dp)) {

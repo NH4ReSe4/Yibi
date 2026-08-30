@@ -2,6 +2,7 @@ package com.dubiao.yibi.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
@@ -25,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,7 +38,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.dubiao.yibi.speech.OnDeviceSpeechController
+import com.dubiao.yibi.domain.recurringBudgetReserve
+import com.dubiao.yibi.speech.OnlineSpeechController
 import com.dubiao.yibi.ui.theme.Forest
 import com.dubiao.yibi.ui.theme.Mint
 import com.dubiao.yibi.ui.theme.Muted
@@ -62,7 +65,9 @@ fun YiBiApp(viewModel: LedgerViewModel) {
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
     val billingCloseDay by viewModel.billingCloseDay.collectAsStateWithLifecycle()
     val budgetSettings by viewModel.budgetSettings.collectAsStateWithLifecycle()
+    val weeklyReminderEnabled by viewModel.weeklyReminderEnabled.collectAsStateWithLifecycle()
     val recurringTemplates by viewModel.recurringTemplates.collectAsStateWithLifecycle()
+    val recurringReserve = remember(recurringTemplates) { recurringBudgetReserve(recurringTemplates) }
     val recurringEditor by viewModel.recurringEditor.collectAsStateWithLifecycle()
     val editor by viewModel.editor.collectAsStateWithLifecycle()
     var selectedTab by remember { mutableStateOf(AppTab.HOME) }
@@ -70,6 +75,12 @@ fun YiBiApp(viewModel: LedgerViewModel) {
     var showAddMethod by remember { mutableStateOf(false) }
     var showBudgetSettings by remember { mutableStateOf(false) }
     var confirmRestore by remember { mutableStateOf(false) }
+    var notificationPermissionGranted by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
+        )
+    }
     val updateManager = remember(context) { AppUpdateManager(context.applicationContext) }
     var updateState by remember { mutableStateOf<AppUpdateState>(AppUpdateState.Idle) }
 
@@ -127,9 +138,24 @@ fun YiBiApp(viewModel: LedgerViewModel) {
     val restoreLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let { viewModel.restoreBackup(context, it, showTransferResult) } }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        notificationPermissionGranted = granted
+        if (!granted) scope.launch { snackbar.showSnackbar("未允许通知，每周提醒暂时无法显示") }
+    }
+    val requestNotificationPermission = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationPermissionGranted) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    LaunchedEffect(weeklyReminderEnabled) {
+        if (weeklyReminderEnabled) requestNotificationPermission()
+    }
 
     val speechController = remember(context) {
-        OnDeviceSpeechController(
+        OnlineSpeechController(
             context = context.applicationContext,
             onListeningChanged = { isListening = it },
             onResult = viewModel::openVoiceResult,
@@ -221,6 +247,7 @@ fun YiBiApp(viewModel: LedgerViewModel) {
             AppTab.SETTINGS -> SettingsScreen(
                 billingCloseDay = billingCloseDay,
                 budgetSettings = budgetSettings,
+                recurringReserve = recurringReserve,
                 recurringTemplates = recurringTemplates,
                 onBillingCloseDay = { day ->
                     viewModel.setBillingCloseDay(day)
@@ -234,6 +261,13 @@ fun YiBiApp(viewModel: LedgerViewModel) {
                         scope.launch { snackbar.showSnackbar("周期账目已删除") }
                     }
                 },
+                weeklyReminderEnabled = weeklyReminderEnabled,
+                notificationPermissionGranted = notificationPermissionGranted,
+                onWeeklyReminderEnabled = { enabled ->
+                    viewModel.setWeeklyReminderEnabled(context.applicationContext, enabled)
+                    if (enabled) requestNotificationPermission()
+                },
+                onRequestNotificationPermission = requestNotificationPermission,
                 onExportBackup = { backupLauncher.launch("一笔完整备份-${LocalDate.now()}.json") },
                 onRestoreBackup = { confirmRestore = true },
                 onExportCsv = { csvLauncher.launch("一笔流水-${LocalDate.now()}.csv") },
@@ -295,6 +329,7 @@ fun YiBiApp(viewModel: LedgerViewModel) {
         BudgetSettingsSheet(
             settings = budgetSettings,
             billingCloseDay = billingCloseDay,
+            recurringReserve = recurringReserve,
             onDismiss = { showBudgetSettings = false },
             onSave = { settings ->
                 viewModel.setBudgetSettings(settings)

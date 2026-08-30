@@ -9,22 +9,16 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class OnDeviceSpeechControllerTest {
-    @Test fun recognitionIntentUsesSimplifiedChineseWithoutLanguageQueryExtras() {
-        val intent = speechRecognitionIntent(preferOffline = true)
-
-        assertEquals("zh-CN", intent.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE))
-        assertTrue(intent.getBooleanExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false))
-        assertTrue(intent.getBooleanExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false))
-        assertEquals(3, intent.getIntExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 0))
-        assertFalse(intent.hasExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE))
-        assertFalse(intent.hasExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE))
-    }
-
-    @Test fun onlineFallbackAllowsTheSystemRecognizerToUseNetwork() {
-        val intent = speechRecognitionIntent(preferOffline = false)
+class OnlineSpeechControllerTest {
+    @Test fun recognitionIntentUsesOnlineSimplifiedChineseWithAmountBiases() {
+        val intent = onlineSpeechRecognitionIntent()
 
         assertEquals("zh-CN", intent.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE))
         assertFalse(intent.getBooleanExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true))
+        assertTrue(intent.getBooleanExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false))
+        assertEquals(3, intent.getIntExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 0))
+        assertTrue(intent.getStringArrayListExtra(RecognizerIntent.EXTRA_BIASING_STRINGS)?.contains("八欧") == true)
+        assertFalse(intent.hasExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE))
+        assertFalse(intent.hasExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE))
     }
 }

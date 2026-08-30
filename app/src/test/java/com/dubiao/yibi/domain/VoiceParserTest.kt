@@ -37,6 +37,18 @@ class VoiceParserTest {
         assertEquals("83", result.amountText)
     }
 
+    @Test fun correctsBaToEightInClearAmountPositions() {
+        assertEquals("8", VoiceParser.parse("午饭吧欧", now).amountText)
+        assertEquals("6.8", VoiceParser.parse("咖啡六点吧欧", now).amountText)
+        assertEquals("83", VoiceParser.parse("晚饭吧十三块", now).amountText)
+    }
+
+    @Test fun doesNotTreatBaInVenueNamesAsEight() {
+        val bar = VoiceParser.parse("酒吧十三欧", now)
+        assertEquals("13", bar.amountText)
+        assertEquals("娱乐", bar.category)
+    }
+
     @Test fun recognizesFixedExpenseGroup() {
         val result = VoiceParser.parse("房租八百欧元", now)
         assertEquals(ExpenseGroup.FIXED, result.expenseGroup)

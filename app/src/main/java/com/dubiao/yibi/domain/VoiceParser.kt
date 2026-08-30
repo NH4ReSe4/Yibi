@@ -53,7 +53,7 @@ object VoiceParser {
 
     fun parse(text: String, now: LocalDateTime = LocalDateTime.now()): VoiceDraft {
         val normalized = text.trim().lowercase()
-        val amount = detectAmount(normalized)
+        val amount = detectAmount(correctAmountHomophones(normalized))
         val type = if (incomeWords.any(normalized::contains)) TransactionType.INCOME else TransactionType.EXPENSE
         val category = if (type == TransactionType.INCOME) {
             detectIncomeCategory(normalized)
@@ -73,6 +73,13 @@ object VoiceParser {
             note = text.trim(),
             rawText = text.trim(),
         )
+    }
+
+    private fun correctAmountHomophones(text: String): String {
+        // 只在“吧”后面紧跟数字和币种时纠正，避免影响“酒吧”和“网吧”等正常词语。
+        val currency = "(?:欧元|€|欧|块|元|\\b(?:eur|euros?)\\b)"
+        val followingNumber = "[零〇一二两三四五六七八九十百千万点0-9]{0,8}"
+        return text.replace(Regex("(?<![酒网])吧(?=$followingNumber\\s*$currency)"), "八")
     }
 
     private fun detectIncomeCategory(text: String): String = when {

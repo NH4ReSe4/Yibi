@@ -13,6 +13,7 @@ data class BackupPayload(
     val recurringTemplates: List<RecurringTemplateEntity>,
     val billingCloseDay: Int,
     val budgetSettings: BudgetSettings,
+    val weeklyReminderEnabled: Boolean,
 )
 
 object LocalDataTransfer {
@@ -23,12 +24,14 @@ object LocalDataTransfer {
         templates: List<RecurringTemplateEntity>,
         billingCloseDay: Int,
         budgets: BudgetSettings,
+        weeklyReminderEnabled: Boolean = true,
     ) {
         val root = JSONObject()
             .put("format", "yibi-backup")
             .put("version", 1)
             .put("exportedAt", System.currentTimeMillis())
             .put("billingCloseDay", billingCloseDay)
+            .put("weeklyReminderEnabled", weeklyReminderEnabled)
             .put("budgets", budgets.toJson())
             .put("transactions", JSONArray().apply { transactions.forEach { put(it.toJson()) } })
             .put("recurringTemplates", JSONArray().apply { templates.forEach { put(it.toJson()) } })
@@ -49,6 +52,7 @@ object LocalDataTransfer {
             recurringTemplates = List(templateArray.length()) { templateArray.getJSONObject(it).toTemplate() },
             billingCloseDay = root.optInt("billingCloseDay", 31).coerceIn(1, 31),
             budgetSettings = root.optJSONObject("budgets")?.toBudgets() ?: BudgetSettings(),
+            weeklyReminderEnabled = root.optBoolean("weeklyReminderEnabled", true),
         )
     }
 

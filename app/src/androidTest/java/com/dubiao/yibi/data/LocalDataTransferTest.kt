@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,12 +31,13 @@ class LocalDataTransferTest {
         val budgets = BudgetSettings(200_000, 80_000, 20_000, 70_000, 30_000)
         val file = File(context.cacheDir, "roundtrip-${System.nanoTime()}.json")
         try {
-            LocalDataTransfer.writeBackup(context, Uri.fromFile(file), listOf(transaction), listOf(template), 25, budgets)
+            LocalDataTransfer.writeBackup(context, Uri.fromFile(file), listOf(transaction), listOf(template), 25, budgets, false)
             val restored = LocalDataTransfer.readBackup(context, Uri.fromFile(file))
             assertEquals(listOf(transaction), restored.transactions)
             assertEquals(listOf(template), restored.recurringTemplates)
             assertEquals(25, restored.billingCloseDay)
             assertEquals(budgets, restored.budgetSettings)
+            assertFalse(restored.weeklyReminderEnabled)
         } finally {
             file.delete()
         }

@@ -28,6 +28,10 @@ class UserPreferences(context: Context) {
     val billingCloseDay = _billingCloseDay.asStateFlow()
     private val _budgetSettings = MutableStateFlow(readBudgetSettings())
     val budgetSettings = _budgetSettings.asStateFlow()
+    private val _weeklyReminderEnabled = MutableStateFlow(
+        preferences.getBoolean(KEY_WEEKLY_REMINDER_ENABLED, true),
+    )
+    val weeklyReminderEnabled = _weeklyReminderEnabled.asStateFlow()
 
     fun setBillingCloseDay(day: Int) {
         val normalized = day.coerceIn(1, 31)
@@ -53,6 +57,11 @@ class UserPreferences(context: Context) {
         _budgetSettings.value = normalized
     }
 
+    fun setWeeklyReminderEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_WEEKLY_REMINDER_ENABLED, enabled).apply()
+        _weeklyReminderEnabled.value = enabled
+    }
+
     private fun readBudgetSettings() = BudgetSettings(
         totalMinor = preferences.getLong(KEY_BUDGET_TOTAL, 0),
         fixedMinor = preferences.getLong(KEY_BUDGET_FIXED, 0),
@@ -69,6 +78,7 @@ class UserPreferences(context: Context) {
         const val KEY_BUDGET_SUBSCRIPTION = "budget_subscription"
         const val KEY_BUDGET_DAILY = "budget_daily"
         const val KEY_BUDGET_INVESTMENT = "budget_investment"
+        const val KEY_WEEKLY_REMINDER_ENABLED = "weekly_reminder_enabled"
         const val DEFAULT_BILLING_CLOSE_DAY = 31
     }
 }

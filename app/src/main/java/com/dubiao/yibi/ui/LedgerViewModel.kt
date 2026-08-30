@@ -19,9 +19,14 @@ import com.dubiao.yibi.data.TransactionEntity
 import com.dubiao.yibi.data.TransactionType
 import com.dubiao.yibi.data.UserPreferences
 import com.dubiao.yibi.domain.VoiceParser
+import com.dubiao.yibi.domain.RecurringBudgetReserve
+import com.dubiao.yibi.domain.budgetSettingsWithRecurringReserve
 import com.dubiao.yibi.domain.followingRecurringDate
 import com.dubiao.yibi.domain.minorToInput
 import com.dubiao.yibi.domain.parseMinor
+import com.dubiao.yibi.domain.recurringBudgetReserve
+import com.dubiao.yibi.domain.relinkBudgetSettings
+import com.dubiao.yibi.reminder.WeeklyReminderScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,6 +79,7 @@ class LedgerViewModel(
     )
     val billingCloseDay = userPreferences.billingCloseDay
     val budgetSettings = userPreferences.budgetSettings
+    val weeklyReminderEnabled = userPreferences.weeklyReminderEnabled
     val recurringTemplates: StateFlow<List<RecurringTemplateEntity>> = repository.recurringTemplates.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -86,11 +92,22 @@ class LedgerViewModel(
     val recurringEditor = _recurringEditor.asStateFlow()
     private var editorSaveInFlight = false
     private var recurringSaveInFlight = false
+    private var previousRecurringBudgetReserve: RecurringBudgetReserve? = null
 
     init {
         viewModelScope.launch {
             repository.recurringTemplates.collect { templates ->
                 try {
+                    val currentReserve = recurringBudgetReserve(templates)
+                    val previousReserve = previousRecurringBudgetReserve
+                    val currentSettings = budgetSettings.value
+                    val linkedSettings = if (previousReserve == null) {
+                        budgetSettingsWithRecurringReserve(currentSettings, currentReserve)
+                    } else {
+                        relinkBudgetSettings(currentSettings, previousReserve, currentReserve)
+                    }
+                    previousRecurringBudgetReserve = currentReserve
+                    if (linkedSettings != currentSettings) userPreferences.setBudgetSettings(linkedSettings)
                     synchronizeDueRecurringTemplates(templates)
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
@@ -239,6 +256,12 @@ class LedgerViewModel(
 
     fun setBudgetSettings(settings: BudgetSettings) = userPreferences.setBudgetSettings(settings)
 
+    fun setWeeklyReminderEnabled(context: Context, enabled: Boolean) {
+        userPreferences.setWeeklyReminderEnabled(enabled)
+        if (enabled) WeeklyReminderScheduler.schedule(context) else WeeklyReminderScheduler.cancel(context)
+        debugLog("reminder.weekly", "enabled=$enabled")
+    }
+
     fun openRecurringTemplate() {
         _recurringEditor.value = RecurringEditorState(visible = true)
     }
@@ -369,7 +392,7 @@ class LedgerViewModel(
                 withContext(Dispatchers.IO) {
                     LocalDataTransfer.writeBackup(
                         context, uri, transactions.value, recurringTemplates.value,
-                        billingCloseDay.value, budgetSettings.value,
+                        billingCloseDay.value, budgetSettings.value, weeklyReminderEnabled.value,
                     )
                 }
             }
@@ -392,7 +415,13 @@ class LedgerViewModel(
                 val payload = withContext(Dispatchers.IO) { LocalDataTransfer.readBackup(context, uri) }
                 repository.replaceAll(payload.transactions, payload.recurringTemplates)
                 userPreferences.setBillingCloseDay(payload.billingCloseDay)
-                userPreferences.setBudgetSettings(payload.budgetSettings)
+                userPreferences.setBudgetSettings(
+                    budgetSettingsWithRecurringReserve(
+                        payload.budgetSettings,
+                        recurringBudgetReserve(payload.recurringTemplates),
+                    ),
+                )
+                setWeeklyReminderEnabled(context.applicationContext, payload.weeklyReminderEnabled)
             }
             onResult(result.isSuccess, result.exceptionOrNull()?.message ?: "备份已恢复")
         }

@@ -10,6 +10,7 @@ import com.dubiao.yibi.data.ExpenseGroup
 import com.dubiao.yibi.data.InputMethod
 import com.dubiao.yibi.data.TransactionEntity
 import com.dubiao.yibi.data.TransactionType
+import com.dubiao.yibi.domain.RecurringBudgetReserve
 import com.dubiao.yibi.ui.theme.YiBiTheme
 import com.dubiao.yibi.update.AppUpdateState
 import java.time.LocalDateTime
@@ -117,12 +118,17 @@ private fun SettingsPreview() {
         SettingsScreen(
             billingCloseDay = 25,
             budgetSettings = BudgetSettings(totalMinor = 180000, dailyMinor = 60000),
+            recurringReserve = RecurringBudgetReserve(),
             recurringTemplates = emptyList(),
             onBillingCloseDay = {},
             onEditBudget = {},
             onAddRecurring = {},
             onEditRecurring = {},
             onDeleteRecurring = {},
+            weeklyReminderEnabled = true,
+            notificationPermissionGranted = true,
+            onWeeklyReminderEnabled = {},
+            onRequestNotificationPermission = {},
             onExportBackup = {},
             onRestoreBackup = {},
             onExportCsv = {},
